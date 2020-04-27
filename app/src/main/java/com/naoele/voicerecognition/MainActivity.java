@@ -1,48 +1,57 @@
 package com.naoele.voicerecognition;
 
+import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import java.util.ArrayList;
-import java.util.Locale;
+import com.naoele.voicerecognition.Dialogs.ErrorDialog;
 
-import static android.Manifest.permission.RECORD_AUDIO;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_CODE = 1000;
     private static final int REQUEST_ERROR_CODE = 9000;
-    private TextView textView;
+    private static final int REQUEST_PERMISSION = 3000;
+
+    private TextView _textView;
 
     // 言語
-    private int lang = 0;
+    private int _lang = 0;
+
+    private String[] _permissions = {
+            Manifest.permission.INTERNET,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+    };
+
+    private String ERR_DIALOG = "err";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // permissionチェック。これをいれないと6.0以上のOSではダイアログが表示されない
-        if (ContextCompat.checkSelfPermission(this, RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, RECORD_AUDIO)) {
-                // 拒否した場合
-            } else {
-                // 許可した場合
-                int MY_PERMISSIONS_RECORD_AUDIO = 1;
-                ActivityCompat.requestPermissions(this, new String[]{RECORD_AUDIO}, MY_PERMISSIONS_RECORD_AUDIO);
-            }
+        if (Build.VERSION.SDK_INT >= 23) {
+            // permissionチェック。これをいれないと6.0以上のOSではダイアログが表示されない
+            checkPermission(_permissions);
         }
 
-        textView = findViewById(R.id.txv_display);
+        _textView = findViewById(R.id.txv_display);
         Button buttonStart = findViewById(R.id.btn_start);
         buttonStart.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -58,13 +67,13 @@ public class MainActivity extends AppCompatActivity {
         // 音声認識の　Intent インスタンス
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
 
-        if (lang == 0) {
+        if (_lang == 0) {
             // 日本語
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.JAPAN.toString());
-        } else if (lang == 1) {
+        } else if (_lang == 1) {
             // 英語
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.ENGLISH.toString());
-        } else if (lang == 2) {
+        } else if (_lang == 2) {
             // Off line mode
             intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
         } else {
@@ -91,9 +100,65 @@ public class MainActivity extends AppCompatActivity {
 
             if (candidates != null && candidates.size() > 0) {
                 // 認識結果候補で一番有力なものを表示
-                textView.setText(candidates.get(0));
+                _textView.setText(candidates.get(0));
             }
 
         }
     }
+
+    /**
+     * パーミッションの許可をチェック
+     */
+    public void checkPermission(String[] permissions) {
+        boolean isPermissionDenied = true;
+        for (String permission : permissions) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                isPermissionDenied = false;
+            }
+        }
+        if (!isPermissionDenied) {
+            // 拒否していた場合
+            requestPermissions(permissions);
+        }
+    }
+
+    /**
+     * パーミッションの許可を求める
+     */
+    private void requestPermissions(String[] permissions) {
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_PERMISSION);
+    }
+
+    // 結果の受け取り
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == REQUEST_PERMISSION) {
+
+            boolean isShowPermissionRequestDialog = true;
+            List<String> deniedPermissions = new ArrayList<String>();
+
+            for (int i = 0; i < grantResults.length; i++) {
+                if (grantResults[i] == PackageManager.PERMISSION_DENIED) {
+                    if (ActivityCompat.shouldShowRequestPermissionRationale(this, permissions[i])) {
+                        // 以前パーミッションリクエストを拒否した場合もう一度
+                        deniedPermissions.add(permissions[i]);
+                    } else {
+                        // 拒否してかつパーミッションリクエストダイアログを今後表示しないを選択した場合
+                        isShowPermissionRequestDialog = false;
+                        deniedPermissions.add(permissions[i]);
+                    }
+                }
+            }
+            if (isShowPermissionRequestDialog) {
+                if (deniedPermissions.size() > 0) {
+                    String[] ary = new String[deniedPermissions.size()];
+                    checkPermission(deniedPermissions.toArray(ary));
+                }
+            } else {
+                ErrorDialog.show("アプリは正常に動作しないので\n設定画面から権限を許可してください。", getSupportFragmentManager(), ERR_DIALOG);
+//                Toast.makeText(this, "アプリは正常に動作しないので\n設定画面から権限を許可してください。", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
 }
